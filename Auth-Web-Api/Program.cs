@@ -1,49 +1,66 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using NSwag.AspNetCore;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddMicrosoftIdentityWebApi(options =>
-        {
-            builder.Configuration.Bind("AzureAd", options);
-            options.TokenValidationParameters.NameClaimType = "name";
-        }, options => { builder.Configuration.Bind("AzureAd", options); });
-
-builder.Services.AddAuthorizationBuilder()
-    .AddPolicy("AuthZPolicy", policyBuilder =>
-        policyBuilder.Requirements.Add(new ScopeAuthorizationRequirement() { RequiredScopesConfigurationKey = $"AzureAd:Scopes" }));
-
-// Add services to the container.
+    .AddJwtBearer(options =>
+    {
+        options.Authority = builder.Configuration["AzureAd:Authority"];
+        options.Audience = builder.Configuration["AzureAd:Audience"];
+    });
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Configuración de Swagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "My API", Version = "v1" });
+
+    c.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            Implicit = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri("https://login.microsoftonline.com/" + builder.Configuration["AzureAd:TenantId"] + "/oauth2/v2.0/authorize"),
+                TokenUrl = new Uri("https://login.microsoftonline.com/" + builder.Configuration["AzureAd:TenantId"] + "/oauth2/v2.0/authorize"),
+                Scopes = new Dictionary<string, string>
+                {
+                    { builder.Configuration["AzureAd:Scopes"] ?? "User.Read", "User.Read" }
+                }
+            }
+        }
+    });
+
+    c.OperationFilter<AddAuthorizeHeaderOperationFilter>(); // Utiliza la clase AddAuthorizeHeaderOperationFilter
+});
+
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+        c.OAuthClientId(builder.Configuration["AzureAd:ClientId"]);
+        c.OAuthAppName("My API V1");
+        c.OAuthUsePkce();
+    });
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthentication();
-app.Use(async (context, next) =>
-{
-    if (context.Request.Headers.TryGetValue("Authorization", out var authHeader))
-    {
-        context.Request.Headers["Authorization"] = $"Bearer {authHeader}";
-    }
-
-    await next();
-});
-
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();

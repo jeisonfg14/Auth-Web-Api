@@ -6,7 +6,7 @@ namespace Auth_Web_Api.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    [Authorize(Policy = "AuthZPolicy")]
+    [Authorize()]
     public class WeatherForecastController : ControllerBase
     {
         private static readonly string[] Summaries = new[]
@@ -20,7 +20,6 @@ namespace Auth_Web_Api.Controllers
         {
             _logger = logger;
         }
-        [RequiredScope("Forecast.Read")]
         [HttpGet(Name = "GetWeatherForecast")]
         public IEnumerable<WeatherForecast> Get()
         {
